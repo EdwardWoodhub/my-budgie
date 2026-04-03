@@ -1,27 +1,23 @@
 # ==============================================================================
-# 镜像名称: my-budgie-onyx-vm
-# 核心架构: Budgie 10.10 + Labwc (Wayland)
-# 目标用户名: edward (UID: 1000)
+# 镜像名称: my-custom-budgie-os
+# 基础底座: ghcr.io/ublue-os/base-main (纯净版)
+# 目标: 从零搭建 Budgie + Labwc + WayVNC
 # ==============================================================================
 
-name: my-budgie-onyx-vm
-description: 基于 Budgie 10.10 的自动远程办公系统，用户名预设为 edward
-base-image: ghcr.io/ublue-os/onyx-main
+name: my-custom-budgie-os
+description: 从 ublue-base 开始构建的自定义 Budgie 环境
+base-image: ghcr.io/ublue-os/base-main
 image-version: latest
 
 modules:
   # ------------------------------------------------------------
-  # 1. 基础系统脚本：网络、防火墙、自动登录与用户驻留
+  # 1. 软件源与系统脚本
   # ------------------------------------------------------------
   - type: script
     snippets:
       - dnf -y copr enable zhullyb/v2rayA
       - echo "net.ipv4.ip_forward = 1" > /etc/sysctl.d/99-ip-forward.conf
-      
-      # 开启用户驻留 (Linger) - 确保用户服务在开机时即启动
       - loginctl enable-linger edward
-
-      # 配置 SDDM 自动登录 (目标用户: edward)
       - |
         mkdir -p /etc/sddm.conf.d
         cat <<EOF > /etc/sddm.conf.d/autologin.conf
@@ -29,98 +25,89 @@ modules:
         User=edward
         Session=budgie-desktop
         EOF
-
-      # 防火墙策略：放行 VNC (5900 端口)
       - firewall-offline-cmd --add-service=vnc-server
 
   # ------------------------------------------------------------
-  # 2. 软件包安装 (rpm-ostree)
+  # 2. 核心图形环境安装 (关键：因为 base 没有图形界面)
   # ------------------------------------------------------------
   - type: rpm-ostree
     install:
-      # Budgie 10.10 & Labwc 核心组件
-      - labwc
-      - budgie-desktop-services
-      - libxfce4windowing
-      - xdg-desktop-portal-wlr
+      # --- 基础显示支持 ---
+      - mesa-dri-drivers        # 3D 驱动 (VMware 必须)
+      - xorg-x11-server-Xwayland # 兼容 X11 应用
+      - sddm                    # 登录管理器
       
-      # 远程办公工具
+      # --- Budgie 核心 (手动补全) ---
+      - budgie-desktop
+      - budgie-control-center
+      - budgie-desktop-services
+      - labwc                   # 窗口合成器
+      - libxfce4windowing       # 解决面板图标问题
+      - network-manager-applet  # 网络图标
+      
+      # --- 远程与安全工具 ---
       - wayvnc
-      - control-port
       - swaylock
       - grim
       - slurp
       - wl-clipboard
-
-      # 网络与虚拟机增强
-      - open-vm-tools
-      - open-vm-tools-desktop
+      
+      # --- 虚拟机与网络 ---
+      - open-vm-tools-desktop   # 关键：这比 base 里的 open-vm-tools 多了剪贴板共享
       - v2raya
-      - trojan
-      - iptables
-      - ipset
-
-      # 基础工具
       - git
       - vim
       - wget
-      - htop
-      - fastfetch
 
   # ------------------------------------------------------------
-  # 3. 配置文件与 GSchema 注入
+  # 3. 配置文件注入
   # ------------------------------------------------------------
   - type: script
     snippets:
-      # A. 创建 WayVNC 用户服务文件
+      # A. WayVNC 服务 (用户级)
       - |
         mkdir -p /usr/lib/systemd/user/
         cat <<EOF > /usr/lib/systemd/user/wayvnc.service
         [Unit]
-        Description=WayVNC server for Budgie-Labwc
+        Description=WayVNC for Budgie
         After=wayland-session.target
 
         [Service]
         Type=simple
         ExecStart=/usr/bin/wayvnc --address=0.0.0.0 --port=5900 --gpu-filter=render
         Restart=always
-        RestartSec=5
-
-        [Install]
-        WantedBy=default.target
         EOF
-      # B. 创建“登录即锁屏”启动项
+
+      # B. 登录即锁屏 (Desktop Entry)
       - |
         mkdir -p /etc/xdg/autostart/
         cat <<EOF > /etc/xdg/autostart/auto-lock.desktop
         [Desktop Entry]
         Type=Application
-        Name=Auto Lock on Login
+        Name=Auto Lock
         Exec=swaylock -c 000000
         OnlyShowIn=Budgie;
-        NoDisplay=true
         X-GNOME-Autostart-enabled=true
         EOF
-      # C. 注入 Budgie-Labwc 桥接设置 (GSchema Override)
+
+      # C. 强制开启 Labwc 桥接 (GSchema)
       - |
         mkdir -p /usr/share/glib-2.0/schemas/
         cat <<EOF > /usr/share/glib-2.0/schemas/zz0-budgie-custom.gschema.override
         [org.buddiesofbudgie.budgie-desktop.services.labwc-bridge]
         enabled=true
-        manage-decorations=true
-
         [org.buddiesofbudgie.desktop.wm.preferences]
         button-layout='appmenu:minimize,maximize,close'
-        focus-mode='click'
         EOF
         glib-compile-schemas /usr/share/glib-2.0/schemas/
 
   # ------------------------------------------------------------
-  # 4. 服务激活管理 (Systemd)
+  # 4. 服务激活 (关键：必须开启 sddm)
   # ------------------------------------------------------------
   - type: systemd
     system:
       enabled:
+        - sddm.service        # 必须手动开启，否则开机是黑屏命令行
         - v2raya.service
         - vmtoolsd.service
     user:
@@ -128,14 +115,10 @@ modules:
         - wayvnc.service
 
   # ------------------------------------------------------------
-  # 5. 应用软件 (Flatpak)
+  # 5. 应用软件
   # ------------------------------------------------------------
   - type: default-flatpaks@v1
-    notify: true
     system:
       install:
         - org.mozilla.firefox
-        - com.google.Chrome
-        - org.telegram.desktop
-        - com.jianguoyun.Nutstore
         - com.visualstudio.code
