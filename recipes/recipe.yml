@@ -1,17 +1,16 @@
 # ==============================================================================
 # 镜像名称: my-budgie-onyx-vm
-# 目标架构: Budgie 10.10 + Labwc (Wayland)
-# 核心功能: 虚拟机开机即自动登录、后台运行 WayVNC、自动锁屏、网络自治
+# 核心架构: Budgie 10.10 + Labwc (Wayland)
 # ==============================================================================
 
 name: my-budgie-onyx-vm
-description: 专为 VMware 优化的 Budgie 10.10 自动远程办公系统
+description: 专为 VMware 优化的 Budgie 10.10 系统，集成 WayVNC 与网络自治
 base-image: ghcr.io/ublue-os/onyx-main
 image-version: latest
 
 modules:
   # ------------------------------------------------------------
-  # 1. 基础系统脚本：网络、防火墙与用户状态管理
+  # 1. 基础系统脚本：网络、防火墙、自动登录与用户驻留
   # ------------------------------------------------------------
   - type: script
     snippets:
@@ -19,11 +18,10 @@ modules:
       - dnf -y copr enable zhullyb/v2rayA
       - echo "net.ipv4.ip_forward = 1" > /etc/sysctl.d/99-ip-forward.conf
       
-      # B. 开启用户驻留 (Linger)
-      # 重要：将 'user' 替换为你实际的系统用户名。这允许用户服务在开机阶段即启动。
+      # B. 开启用户驻留 (Linger) - ！！请将 'user' 替换为您实际的用户名！！
       - loginctl enable-linger user
 
-      # C. 配置 SDDM 自动登录 (将 'user' 替换为你实际的用户名)
+      # C. 配置 SDDM 自动登录 - ！！请将 'user' 替换为您实际的用户名！！
       - |
         mkdir -p /etc/sddm.conf.d
         cat <<EOF > /etc/sddm.conf.d/autologin.conf
@@ -40,21 +38,21 @@ modules:
   # ------------------------------------------------------------
   - type: rpm-ostree
     install:
-      # --- Budgie 10.10 & Labwc 核心堆栈 ---
+      # Budgie 10.10 & Labwc 核心组件
       - labwc
-      - budgie-desktop-services    # 包含关键的 labwc-bridge 逻辑
-      - libxfce4windowing          # 解决图标匹配问题的关键库
-      - xdg-desktop-portal-wlr     # Wayland 门户协议支持
+      - budgie-desktop-services
+      - libxfce4windowing
+      - xdg-desktop-portal-wlr
       
-      # --- 远程访问与安全 ---
-      - wayvnc                     # VNC 服务端
-      - control-port               # wayvnc 控制工具
-      - swaylock                   # 自动锁屏工具
-      - grim                       # 截图工具
-      - slurp                      # 选区工具
-      - wl-clipboard               # 剪贴板管理
+      # 远程办公工具
+      - wayvnc
+      - control-port
+      - swaylock
+      - grim
+      - slurp
+      - wl-clipboard
 
-      # --- 虚拟机与网络 ---
+      # 网络与虚拟机增强
       - open-vm-tools
       - open-vm-tools-desktop
       - v2raya
@@ -62,7 +60,7 @@ modules:
       - iptables
       - ipset
 
-      # --- 基础工具 ---
+      # 基础工具
       - git
       - vim
       - wget
@@ -70,11 +68,11 @@ modules:
       - fastfetch
 
   # ------------------------------------------------------------
-  # 3. 配置文件注入 (通过脚本生成，避免路径冲突)
+  # 3. 配置文件与 GSchema 注入 (替代失效的 gsettings 模块)
   # ------------------------------------------------------------
   - type: script
     snippets:
-      # A. 创建 WayVNC 用户服务
+      # A. 创建 WayVNC 用户服务文件
       - |
         mkdir -p /usr/lib/systemd/user/
         cat <<EOF > /usr/lib/systemd/user/wayvnc.service
@@ -84,7 +82,6 @@ modules:
 
         [Service]
         Type=simple
-        # 针对 VMware 优化：使用 --gpu-filter=render 降低延迟
         ExecStart=/usr/bin/wayvnc --address=0.0.0.0 --port=5900 --gpu-filter=render
         Restart=always
         RestartSec=5
@@ -93,7 +90,7 @@ modules:
         WantedBy=default.target
         EOF
 
-      # B. 创建“登录即锁屏”脚本
+      # B. 创建“登录即锁屏”启动项
       - |
         mkdir -p /etc/xdg/autostart/
         cat <<EOF > /etc/xdg/autostart/auto-lock.desktop
@@ -106,34 +103,38 @@ modules:
         X-GNOME-Autostart-enabled=true
         EOF
 
+      # C. 注入 Budgie-Labwc 桥接设置 (GSchema Override)
+      - |
+        mkdir -p /usr/share/glib-2.0/schemas/
+        cat <<EOF > /usr/share/glib-2.0/schemas/zz0-budgie-custom.gschema.override
+        [org.buddiesofbudgie.budgie-desktop.services.labwc-bridge]
+        enabled=true
+        manage-decorations=true
+
+        [org.buddiesofbudgie.desktop.wm.preferences]
+        button-layout='appmenu:minimize,maximize,close'
+        focus-mode='click'
+        EOF
+        # 编译 schema 使其生效
+        glib-compile-schemas /usr/share/glib-2.0/schemas/
+
   # ------------------------------------------------------------
-  # 4. 服务激活管理 (Systemd)
+  # 4. 服务激活管理 (Systemd) - 修复了之前的嵌套验证错误
   # ------------------------------------------------------------
+  # 系统级服务
   - type: systemd
-    system:
-      enabled:
-        - v2raya.service
-        - vmtoolsd.service
-    user:
-      enabled:
-        - wayvnc.service
+    enabled:
+      - v2raya.service
+      - vmtoolsd.service
+
+  # 用户级服务 (注意：这里需要分开写，并指定 user: true)
+  - type: systemd
+    user: true
+    enabled:
+      - wayvnc.service
 
   # ------------------------------------------------------------
-  # 5. UI 预设 (GSettings)
-  # ------------------------------------------------------------
-  - type: gsettings
-    overrides:
-      # 必须：开启 Budgie 10.10 的 Labwc 桥接
-      org.buddiesofbudgie.budgie-desktop.services.labwc-bridge:
-        enabled: true
-        manage-decorations: true
-      # 个人习惯预设
-      org.buddiesofbudgie.desktop.wm.preferences:
-        button-layout: 'appmenu:minimize,maximize,close'
-        focus-mode: 'click'
-
-  # ------------------------------------------------------------
-  # 6. Flatpaks 应用分发
+  # 5. Flatpaks 常用应用
   # ------------------------------------------------------------
   - type: default-flatpaks@v1
     notify: true
