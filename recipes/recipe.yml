@@ -1,58 +1,83 @@
+# ==============================================================================
+# 镜像名称: my-custom-budgie-os
+# 基础底座: ghcr.io/ublue-os/base-main (Fedora 44 前瞻版)
+# 目标: 实现 Budgie 10.10 原生 Wayland 远程工作站
+# ==============================================================================
+
 name: my-custom-budgie-os
-description: 基于 Fedora 44 (Rawhide) 的 Budgie 10.10 Wayland 环境
+description: 基于 Fedora 44 的 Budgie 10.10 环境（支持 Wayland/Labwc）
 base-image: ghcr.io/ublue-os/base-main
-image-version: 44  # 核心修改：冲刺 Fedora 44 以获取 Budgie 10.10
+image-version: 44  # 冲刺 Fedora 44 以获取最新的 Budgie 10.10 核心
 
 modules:
   # ------------------------------------------------------------
-  # 1. 软件源阶段
+  # 1. 软件源补丁阶段 (解决 v2rayA 还没适配 F44 的问题)
   # ------------------------------------------------------------
   - type: script
     snippets:
-      - dnf -y copr enable zhullyb/v2rayA
+      # 手动注入 Fedora 43 的 Copr 源，实现跨版本兼容安装
+      - curl -Lo /etc/yum.repos.d/_copr_zhullyb-v2rayA.repo https://copr.fedorainfracloud.org/coprs/zhullyb/v2rayA/repo/fedora-43/zhullyb-v2rayA-fedora-43.repo
 
   # ------------------------------------------------------------
-  # 2. 软件包阶段 (针对 Wayland 优化)
+  # 2. 软件包安装 (补全驱动、终端、文件管理器及科研工具)
   # ------------------------------------------------------------
   - type: rpm-ostree
     install:
-      - xorg-x11-drv-vmware       # 驱动
-      - mesa-dri-drivers          # 3D 加速核心
+      # --- 硬件驱动与核心显示 ---
+      - xorg-x11-drv-vmware       # VMware 显卡驱动
+      - mesa-dri-drivers          # 3D 加速 (Labwc 必须)
       - xorg-x11-server-Xwayland  # 兼容 X11 应用
       - open-vm-tools-desktop     
       - glibc-all-langpacks       
+      
+      # --- 桌面核心与基础设施 ---
       - sddm
-      - polkit
-      - gnome-keyring
+      - polkit                    # 权限管理
+      - gnome-keyring             # 密码存储
+      - desktop-backgrounds-basic 
       - budgie-desktop            # 10.10 核心
       - budgie-control-center
       - labwc                     # Wayland 合成器 (10.10 的灵魂)
       - libxfce4windowing         
-      - gnome-terminal            
-      - nautilus                  
-      - gvfs                      
-      - xdg-user-dirs             
+      
+      # --- 基础工具与 GUI (补全缺失) ---
+      - gnome-terminal            # 终端
+      - nautilus                  # 文件管理器
+      - gvfs                      # 回收站/挂载支持
+      - xdg-user-dirs             # 自动创建桌面、下载等目录
+      
+      # --- 科研与日常必备 ---
+      - gnome-system-monitor     
+      - gnome-text-editor        
+      - eog                      # 图片查看器
+      - evince                   # PDF 阅读器
+      - network-manager-applet   
+      
+      # --- 远程与网络 ---
       - wayvnc                    # 远程桌面
-      - v2raya
-      - firewalld
-      - swaylock
-      - evince                    
+      - v2raya                    # 分流工具
+      - firewalld                 
+      - swaylock                  # 锁屏
+      - wl-clipboard              # 剪贴板同步
+      
+      # --- 维护工具 ---
       - git
       - vim
       - wget
+      - htop
 
   # ------------------------------------------------------------
-  # 3. 系统配置阶段 (Session 与 权限修复)
+  # 3. 系统逻辑配置 (针对 Wayland 会话优化)
   # ------------------------------------------------------------
   - type: script
     snippets:
       - echo "net.ipv4.ip_forward = 1" > /etc/sysctl.d/99-ip-forward.conf
       
-      # 暴力开启 Linger (针对 1001 用户)
+      # 开启 Linger (针对 1001 用户，确保用户服务在后台运行)
       - mkdir -p /var/lib/systemd/linger
       - touch /var/lib/systemd/linger/edward
       
-      # --- 关键修改：强制启动 Wayland 会话 ---
+      # --- 关键修改：强制 SDDM 启动 Wayland 会话 ---
       - |
         mkdir -p /etc/sddm.conf.d
         cat <<EOF > /etc/sddm.conf.d/autologin.conf
@@ -63,10 +88,14 @@ modules:
         [General]
         DisplayServer=wayland
         EOF
+      
+      # 初始化用户目录
+      - sudo -u edward xdg-user-dirs-update || true
 
+      # 防火墙策略
       - firewall-offline-cmd --add-service=vnc-server
 
-      # 注入 10.10 的 GSchema 桥接
+      # 注入 Budgie 10.10 的 GSchema 桥接
       - |
         mkdir -p /usr/share/glib-2.0/schemas/
         cat <<EOF > /usr/share/glib-2.0/schemas/zz0-budgie-custom.gschema.override
@@ -78,7 +107,7 @@ modules:
         glib-compile-schemas /usr/share/glib-2.0/schemas/
 
   # ------------------------------------------------------------
-  # 4. WayVNC 用户服务 (针对 UID 1001 适配)
+  # 4. 创建用户服务 (WayVNC) - 针对 UID 1001 定制
   # ------------------------------------------------------------
   - type: script
     snippets:
@@ -91,11 +120,11 @@ modules:
 
         [Service]
         Type=simple
-        # 核心修正：针对你的 1001 用户环境
+        # 修正：精准定位 Wayland 钥匙和目录 (针对你的 UID 1001)
         Environment=WAYLAND_DISPLAY=wayland-0
         Environment=XDG_RUNTIME_DIR=/run/user/1001
         
-        # 启动命令：去掉可能会导致报错的 GPU 过滤器
+        # 启动命令：去掉有争议的过滤器
         ExecStart=/usr/bin/wayvnc --address 0.0.0.0 --port 5900
         
         Restart=always
