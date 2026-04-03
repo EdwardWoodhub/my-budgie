@@ -1,10 +1,11 @@
 # ==============================================================================
 # 镜像名称: my-budgie-onyx-vm
 # 核心架构: Budgie 10.10 + Labwc (Wayland)
+# 目标用户名: edward (UID: 1000)
 # ==============================================================================
 
 name: my-budgie-onyx-vm
-description: 专为 VMware 优化的 Budgie 10.10 系统，集成 WayVNC 与网络自治
+description: 基于 Budgie 10.10 的自动远程办公系统，用户名预设为 edward
 base-image: ghcr.io/ublue-os/onyx-main
 image-version: latest
 
@@ -14,23 +15,22 @@ modules:
   # ------------------------------------------------------------
   - type: script
     snippets:
-      # A. 启用 v2rayA 源并开启 IP 转发
       - dnf -y copr enable zhullyb/v2rayA
       - echo "net.ipv4.ip_forward = 1" > /etc/sysctl.d/99-ip-forward.conf
       
-      # B. 开启用户驻留 (Linger) - ！！请将 'user' 替换为您实际的用户名！！
-      - loginctl enable-linger user
+      # 开启用户驻留 (Linger) - 确保用户服务在开机时即启动
+      - loginctl enable-linger edward
 
-      # C. 配置 SDDM 自动登录 - ！！请将 'user' 替换为您实际的用户名！！
+      # 配置 SDDM 自动登录 (目标用户: edward)
       - |
         mkdir -p /etc/sddm.conf.d
         cat <<EOF > /etc/sddm.conf.d/autologin.conf
         [Autologin]
-        User=user
+        User=edward
         Session=budgie-desktop
         EOF
 
-      # D. 防火墙策略：放行 VNC (5900 端口)
+      # 防火墙策略：放行 VNC (5900 端口)
       - firewall-offline-cmd --add-service=vnc-server
 
   # ------------------------------------------------------------
@@ -68,7 +68,7 @@ modules:
       - fastfetch
 
   # ------------------------------------------------------------
-  # 3. 配置文件与 GSchema 注入 (替代失效的 gsettings 模块)
+  # 3. 配置文件与 GSchema 注入
   # ------------------------------------------------------------
   - type: script
     snippets:
@@ -89,7 +89,6 @@ modules:
         [Install]
         WantedBy=default.target
         EOF
-
       # B. 创建“登录即锁屏”启动项
       - |
         mkdir -p /etc/xdg/autostart/
@@ -102,7 +101,6 @@ modules:
         NoDisplay=true
         X-GNOME-Autostart-enabled=true
         EOF
-
       # C. 注入 Budgie-Labwc 桥接设置 (GSchema Override)
       - |
         mkdir -p /usr/share/glib-2.0/schemas/
@@ -115,26 +113,22 @@ modules:
         button-layout='appmenu:minimize,maximize,close'
         focus-mode='click'
         EOF
-        # 编译 schema 使其生效
         glib-compile-schemas /usr/share/glib-2.0/schemas/
 
   # ------------------------------------------------------------
-  # 4. 服务激活管理 (Systemd) - 修复了之前的嵌套验证错误
+  # 4. 服务激活管理 (Systemd)
   # ------------------------------------------------------------
-  # 系统级服务
   - type: systemd
-    enabled:
-      - v2raya.service
-      - vmtoolsd.service
-
-  # 用户级服务 (注意：这里需要分开写，并指定 user: true)
-  - type: systemd
-    user: true
-    enabled:
-      - wayvnc.service
+    system:
+      enabled:
+        - v2raya.service
+        - vmtoolsd.service
+    user:
+      enabled:
+        - wayvnc.service
 
   # ------------------------------------------------------------
-  # 5. Flatpaks 常用应用
+  # 5. 应用软件 (Flatpak)
   # ------------------------------------------------------------
   - type: default-flatpaks@v1
     notify: true
