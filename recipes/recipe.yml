@@ -1,17 +1,11 @@
-# ==============================================================================
-# 镜像名称: my-custom-budgie-os
-# 基础底座: ghcr.io/ublue-os/base-main (Fedora 44 Rawhide)
-# 核心目标: Budgie 10.10 原生 Wayland 远程实验室 (UID: 1001)
-# ==============================================================================
-
 name: my-custom-budgie-os
-description: 适配 Fedora 44 的 Budgie 10.10 环境 (含 WayVNC 鼠标修复)
+description: Fedora 44 + Budgie 10.10 (彻底修复鼠标隐身问题)
 base-image: ghcr.io/ublue-os/base-main
 image-version: 44
 
 modules:
   # ------------------------------------------------------------
-  # 1. 软件源补丁: 强制锁定 v2rayA 到 Fedora 43 仓库 (F44 尚未开仓)
+  # 1. 软件源: 锁定 F43 仓库
   # ------------------------------------------------------------
   - type: script
     snippets:
@@ -20,82 +14,66 @@ modules:
         sed -i 's/\$releasever/43/g' /etc/yum.repos.d/_copr_zhullyb-v2rayA.repo
 
   # ------------------------------------------------------------
-  # 2. 软件包安装: 补全驱动、桌面核心、终端、文件管理器及科研工具
+  # 2. 软件包: 补全鼠标主题
   # ------------------------------------------------------------
   - type: rpm-ostree
     install:
-      # --- 驱动与显示核心 ---
       - xorg-x11-drv-vmware
       - mesa-dri-drivers
       - xorg-x11-server-Xwayland
       - open-vm-tools-desktop
-      - glibc-all-langpacks
-      # --- 桌面基础设施 ---
       - sddm
       - polkit
-      - gnome-keyring
-      - desktop-backgrounds-basic
-      - budgie-desktop            # 10.10 核心
+      - budgie-desktop
       - budgie-control-center
-      - labwc                     # Wayland 合成器 (10.10 灵魂)
-      - libxfce4windowing
-      # --- 必装 GUI 工具 ---
-      - gnome-terminal            # 终端
-      - nautilus                  # 文件管理器
-      - gvfs                      # 回收站/挂载支持
-      - xdg-user-dirs
-      # --- 科研与日常必备 ---
-      - gnome-system-monitor
-      - gnome-text-editor
-      - eog
-      - evince                    # PDF 阅读器
-      - network-manager-applet
-      # --- 远程、网络与辅助 ---
+      - labwc
+      - adwaita-cursor-theme      # 核心补充：没有这个就没有箭头图片
+      - gnome-terminal
+      - nautilus
+      - gvfs
       - wayvnc
       - v2raya
       - firewalld
-      - swaylock
-      - wl-clipboard
-      # --- 基础维护 ---
       - git
       - vim
-      - wget
-      - htop
 
   # ------------------------------------------------------------
-  # 3. 系统逻辑配置: 强制 Wayland 会话与 GSchema 桥接
+  # 3. 系统配置: 全局变量注入 (解决鼠标看不见的关键)
   # ------------------------------------------------------------
   - type: script
     snippets:
+      # --- 关键：将变量写入全局环境，Labwc 启动时必须读取 ---
+      - echo "WLR_NO_HARDWARE_CURSORS=1" >> /etc/environment
+      
       - echo "net.ipv4.ip_forward = 1" > /etc/sysctl.d/99-ip-forward.conf
       - mkdir -p /var/lib/systemd/linger
       - touch /var/lib/systemd/linger/edward
+      
       - |
-        # 强制启动 Budgie 10.10 的 Wayland 会话
+        # SDDM 强制 Wayland
         mkdir -p /etc/sddm.conf.d
         cat <<EOF > /etc/sddm.conf.d/autologin.conf
         [Autologin]
         User=edward
         Session=budgie-desktop-wayland
-
         [General]
         DisplayServer=wayland
         EOF
-      - sudo -u edward xdg-user-dirs-update || true
-      - firewall-offline-cmd --add-service=vnc-server
+
       - |
-        # 注入 10.10 专属的桥接配置
+        # 强制设置光标主题
         mkdir -p /usr/share/glib-2.0/schemas/
         cat <<EOF > /usr/share/glib-2.0/schemas/zz0-budgie-custom.gschema.override
         [org.buddiesofbudgie.budgie-desktop.services.labwc-bridge]
         enabled=true
-        [org.buddiesofbudgie.desktop.wm.preferences]
-        button-layout='appmenu:minimize,maximize,close'
+        [org.gnome.desktop.interface]
+        cursor-theme='Adwaita'
+        cursor-size=24
         EOF
         glib-compile-schemas /usr/share/glib-2.0/schemas/
 
   # ------------------------------------------------------------
-  # 4. 创建用户服务: WayVNC (针对 UID 1001 与 鼠标显示优化)
+  # 4. WayVNC 用户服务 (1001 用户适配)
   # ------------------------------------------------------------
   - type: script
     snippets:
@@ -103,19 +81,15 @@ modules:
         mkdir -p /usr/lib/systemd/user/
         cat <<EOF > /usr/lib/systemd/user/wayvnc.service
         [Unit]
-        Description=WayVNC Service (Cursor Fix for F44)
+        Description=WayVNC Service
         After=wayland-session.target
 
         [Service]
         Type=simple
-        # 核心修正：针对 1001 用户和 VMware 鼠标不可见问题
         Environment=WAYLAND_DISPLAY=wayland-0
         Environment=XDG_RUNTIME_DIR=/run/user/1001
-        Environment=WLR_NO_HARDWARE_CURSORS=1
-        
-        # 核心修正：添加 --render-cursor 确保 VNC 画面显示鼠标
+        # VNC 端也强制渲染一次光标
         ExecStart=/usr/bin/wayvnc --address 0.0.0.0 --port 5900 --render-cursor
-        
         Restart=always
         RestartSec=10
 
@@ -123,9 +97,6 @@ modules:
         WantedBy=default.target
         EOF
 
-  # ------------------------------------------------------------
-  # 5. 激活服务
-  # ------------------------------------------------------------
   - type: systemd
     system:
       enabled:
