@@ -1,22 +1,33 @@
 name: my-custom-budgie-os
-description: 基于 ublue-base 构建，修正了构建期 loginctl 报错问题
+description: 基于 ublue-base，彻底修复包找不到和构建期脚本错误
 base-image: ghcr.io/ublue-os/base-main
 image-version: latest
 
 modules:
   # ------------------------------------------------------------
-  # 1. 第一步：先装包（把工具和驱动塞进去）
+  # 阶段 1: 启用外部软件源 (必须排在第一位)
+  # ------------------------------------------------------------
+  - type: script
+    snippets:
+      - dnf -y copr enable zhullyb/v2rayA
+      # 额外：如果需要 ublue 的定制工具，可以开启这个源（可选）
+      # - dnf -y copr enable ublue-os/staging 
+
+  # ------------------------------------------------------------
+  # 阶段 2: 安装软件包 (移除了找不到的定制包)
   # ------------------------------------------------------------
   - type: rpm-ostree
     install:
+      # 图形核心驱动
       - mesa-dri-drivers
       - xorg-x11-server-Xwayland
       - sddm
+      # Budgie 桌面 (移除了 budgie-desktop-services)
       - budgie-desktop
       - budgie-control-center
-      - budgie-desktop-services
       - labwc
       - libxfce4windowing
+      # 工具
       - wayvnc
       - swaylock
       - grim
@@ -24,20 +35,19 @@ modules:
       - wl-clipboard
       - open-vm-tools-desktop
       - v2raya
-      - firewalld   # 确保防火墙工具存在
+      - firewalld
       - git
       - vim
       - wget
 
   # ------------------------------------------------------------
-  # 2. 第二步：再跑脚本（此时工具已就绪，且避开 loginctl 限制）
+  # 阶段 3: 系统配置 (使用暴力 touch 绕过 PID 1 错误)
   # ------------------------------------------------------------
   - type: script
     snippets:
-      - dnf -y copr enable zhullyb/v2rayA
       - echo "net.ipv4.ip_forward = 1" > /etc/sysctl.d/99-ip-forward.conf
       
-      # --- 关键修正：手动开启 Linger ---
+      # --- 暴力开启 Linger ---
       - mkdir -p /var/lib/systemd/linger
       - touch /var/lib/systemd/linger/edward
       
@@ -50,7 +60,7 @@ modules:
         Session=budgie-desktop
         EOF
       
-      # --- 防火墙配置 (确保在 rpm-ostree 之后执行) ---
+      # --- 防火墙策略 ---
       - firewall-offline-cmd --add-service=vnc-server
 
       # --- 注入 GSchema ---
@@ -65,7 +75,7 @@ modules:
         glib-compile-schemas /usr/share/glib-2.0/schemas/
 
   # ------------------------------------------------------------
-  # 3. 注入 WayVNC 用户服务
+  # 阶段 4: 注入 WayVNC 用户服务文件
   # ------------------------------------------------------------
   - type: script
     snippets:
@@ -83,7 +93,7 @@ modules:
         EOF
 
   # ------------------------------------------------------------
-  # 4. 激活服务
+  # 阶段 5: 激活服务
   # ------------------------------------------------------------
   - type: systemd
     system:
