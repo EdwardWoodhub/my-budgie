@@ -1,53 +1,86 @@
+# ==============================================================================
+# 镜像名称: my-custom-budgie-os
+# 基础底座: ghcr.io/ublue-os/base-main (2026 稳定版)
+# 目标用户: edward (需在系统安装时手动创建此同名用户)
+# ==============================================================================
+
 name: my-custom-budgie-os
-description: 修复了黑屏光标问题，补全了虚拟机驱动与桌面基础设施
+description: 深度定制的 Budgie 10.10 + Labwc 远程办公环境
 base-image: ghcr.io/ublue-os/base-main
 image-version: latest
 
 modules:
-  # 1. 软件源阶段
+  # ------------------------------------------------------------
+  # 1. 软件源准备
+  # ------------------------------------------------------------
   - type: script
     snippets:
       - dnf -y copr enable zhullyb/v2rayA
 
-  # 2. 补全缺失的“隐蔽工程”包
+  # ------------------------------------------------------------
+  # 2. 软件包安装 (补全了驱动、终端、文件管理器及科研工具)
+  # ------------------------------------------------------------
   - type: rpm-ostree
     install:
-      # --- 关键：硬件与驱动补丁 ---
-      - xorg-x11-drv-vmware       # VMware 显卡驱动
+      # --- 虚拟机与图形驱动 ---
+      - xorg-x11-drv-vmware
       - mesa-dri-drivers
       - xorg-x11-server-Xwayland
-      - glibc-all-langpacks       # 解决语言/字符集导致的崩溃
+      - open-vm-tools-desktop
+      - glibc-all-langpacks
       
-      # --- 关键：桌面基础设施 (没有它们，桌面起不来) ---
+      # --- 桌面核心与基础设施 ---
       - sddm
-      - polkit                    # 权限管理
-      - gnome-keyring             # 密码存储 (Budgie 启动必须)
-      - desktop-backgrounds-basic # 基础壁纸，防止渲染黑块
-      
-      # --- Budgie 核心 ---
+      - polkit
+      - gnome-keyring
+      - desktop-backgrounds-basic
       - budgie-desktop
       - budgie-control-center
       - labwc
       - libxfce4windowing
       
-      # --- 工具与服务 ---
+      # --- 基础工具 (必装，否则黑屏进不去或没窗口) ---
+      - gnome-terminal           # 终端
+      - nautilus                # 文件管理器
+      - gvfs                    # 提供回收站、挂载、网络支持
+      - gvfs-mtp                # 移动设备支持
+      - xdg-user-dirs           # 自动创建桌面、下载等目录
+      
+      # --- 常用 App (科研/日常必备) ---
+      - gnome-system-monitor     # 任务管理器
+      - gnome-text-editor        # 基础文本编辑
+      - eog                      # 图片查看器
+      - evince                   # PDF 阅读器 (看论文必备)
+      - network-manager-applet   # 托盘网络图标
+      
+      # --- 远程与网络自治 ---
       - wayvnc
-      - swaylock
-      - open-vm-tools-desktop
       - v2raya
       - firewalld
+      - swaylock
+      - grim
+      - slurp
+      - wl-clipboard
+      
+      # --- 系统维护 ---
       - git
       - vim
       - wget
+      - htop
 
-  # 3. 系统配置脚本
+  # ------------------------------------------------------------
+  # 3. 系统逻辑配置 (修正了构建期 PID 1 报错)
+  # ------------------------------------------------------------
   - type: script
     snippets:
+      # A. 网络转发
       - echo "net.ipv4.ip_forward = 1" > /etc/sysctl.d/99-ip-forward.conf
+      
+      # B. 暴力开启 Linger (绕过 loginctl 限制)
       - mkdir -p /var/lib/systemd/linger
       - touch /var/lib/systemd/linger/edward
       
-      # 强制 SDDM 运行在 Wayland 模式的配置
+      # C. 配置 SDDM (自动登录并强制 Wayland 渲染)
       - |
         mkdir -p /etc/sddm.conf.d
         cat <<EOF > /etc/sddm.conf.d/autologin.conf
@@ -58,10 +91,14 @@ modules:
         [General]
         DisplayServer=wayland
         EOF
+      
+      # D. 初始化标准用户目录
+      - sudo -u edward xdg-user-dirs-update || true
 
+      # E. 防火墙策略
       - firewall-offline-cmd --add-service=vnc-server
 
-      # 注入 GSchema 桥接
+      # F. 注入 Budgie-Labwc 桥接设置 (GSchema Override)
       - |
         mkdir -p /usr/share/glib-2.0/schemas/
         cat <<EOF > /usr/share/glib-2.0/schemas/zz0-budgie-custom.gschema.override
@@ -72,23 +109,31 @@ modules:
         EOF
         glib-compile-schemas /usr/share/glib-2.0/schemas/
 
-  # 4. 用户服务
+  # ------------------------------------------------------------
+  # 4. 创建用户服务 (WayVNC)
+  # ------------------------------------------------------------
   - type: script
     snippets:
       - |
         mkdir -p /usr/lib/systemd/user/
         cat <<EOF > /usr/lib/systemd/user/wayvnc.service
         [Unit]
-        Description=WayVNC for Budgie
+        Description=WayVNC Service for Budgie-Wayland
         After=wayland-session.target
 
         [Service]
         Type=simple
         ExecStart=/usr/bin/wayvnc --address=0.0.0.0 --port=5900 --gpu-filter=render
         Restart=always
+        RestartSec=5
+
+        [Install]
+        WantedBy=default.target
         EOF
 
-  # 5. 激活服务
+  # ------------------------------------------------------------
+  # 5. 启动服务
+  # ------------------------------------------------------------
   - type: systemd
     system:
       enabled:
