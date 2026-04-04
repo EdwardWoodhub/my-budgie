@@ -71,7 +71,7 @@ modules:
         cat <<EOF > /etc/sddm.conf.d/autologin.conf
         [Autologin]
         User=edward
-        Session=budgie-desktop-wayland
+        Session=budgie-desktop
         [General]
         DisplayServer=wayland
         EOF
