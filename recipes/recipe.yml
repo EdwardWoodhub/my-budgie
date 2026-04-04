@@ -58,6 +58,8 @@ modules:
       - mkdir -p /var/lib/systemd/linger
       - touch /var/lib/systemd/linger/edward
       - touch /var/lib/systemd/linger/bob
+      # 开启 Linger，允许 edward 的后台服务在断开连接后继续运行，方便labwc和wayvnc自动运行（两者不登录图形界面运行不起来）
+      - loginctl enable-linger edward
       - firewall-offline-cmd --add-port=5900/tcp
       - firewall-offline-cmd --add-port=8384/tcp
       
