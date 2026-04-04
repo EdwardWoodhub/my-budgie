@@ -1,16 +1,16 @@
 # ==============================================================================
 # 镜像名称: my-custom-budgie-os
-# 目标: 修复 Files/gedit，集成 Pluma/Syncthing，完善 D-Bus 握手
+# 核心目标: 修复应用打不开、鼠标隐身、Syncthing 失败 (动态 UID 适配版)
 # ==============================================================================
 
 name: my-custom-budgie-os
-description: Fedora 44 + Budgie 10.10 (全功能科研版)
+description: Fedora 44 + Budgie 10.10 (动态多用户适配版)
 base-image: ghcr.io/ublue-os/base-main
 image-version: 44
 
 modules:
   # ------------------------------------------------------------
-  # 1. 软件源: 锁定 F43 仓库 (v2rayA 专用)
+  # 1. 软件源: 锁定 F43 仓库 (由于 F44 尚未同步 v2rayA)
   # ------------------------------------------------------------
   - type: script
     snippets:
@@ -23,50 +23,52 @@ modules:
   # ------------------------------------------------------------
   - type: rpm-ostree
     install:
-      # --- 显示与驱动 ---
+      # --- 驱动与显示 ---
       - xorg-x11-drv-vmware
       - mesa-dri-drivers
       - xorg-x11-server-Xwayland
       - open-vm-tools-desktop
-      # --- 桌面核心与桥接 ---
+      # --- 桌面核心 ---
       - sddm
       - polkit
       - budgie-desktop
       - budgie-control-center
       - labwc
       - adwaita-cursor-theme
-      # --- 关键：解决应用打不开的“药引子” ---
-      - xdg-desktop-portal-gtk    # 让 Files/gedit 找到授权
-      - dbus-x11                  # 传统的 D-Bus 工具补全
+      # --- 修复 Files/gedit 的核心包 ---
+      - xdg-desktop-portal-gtk    # 提供窗口授权
+      - xdg-desktop-portal        # 门户总线
+      - dbus-x11                  # 补全 D-Bus 环境
       # --- 生产力应用 ---
       - gnome-terminal
       - nautilus                  # Files
-      - gedit                     # GNOME 编辑器
-      - pluma                     # MATE 编辑器 (备用，极稳)
+      - gedit                     
+      - pluma                     # 比 gedit 更稳的编辑器
       - syncthing                 # 文件同步
-      - gvfs
-      - v2raya
-      - wayvnc
+      - gvfs                      # 文件管理器后端
+      - wayvnc                    # 远程桌面
+      - v2raya                    # 科学上网
+      - firewalld                 
       - git
       - htop
 
   # ------------------------------------------------------------
-  # 3. 系统配置: 注入环境变量与 D-Bus 修正
+  # 3. 系统配置: 注入全局变量与多用户 Linger
   # ------------------------------------------------------------
   - type: script
     snippets:
-      # --- 全局变量: 解决鼠标隐身与应用启动身份问题 ---
+      # --- 全局环境变量: 解决鼠标、应用身份和目录问题 ---
       - |
         echo "WLR_NO_HARDWARE_CURSORS=1" >> /etc/environment
         echo "XDG_CURRENT_DESKTOP=Budgie:GNOME" >> /etc/environment
-        echo "XDG_SESSION_TYPE=wayland" >> /etc/environment
-
-      # --- Linger & 网络 ---
+        echo "MOZ_ENABLE_WAYLAND=1" >> /etc/environment
+      
+      # --- 开启多用户 Linger (让 bob 和 edward 的后台服务都能运行) ---
       - mkdir -p /var/lib/systemd/linger
       - touch /var/lib/systemd/linger/edward
-      - echo "net.ipv4.ip_forward = 1" > /etc/sysctl.d/99-ip-forward.conf
+      - touch /var/lib/systemd/linger/bob
       
-      # --- SDDM Autologin ---
+      # --- SDDM Autologin (目前仍设为 edward，可根据需要修改) ---
       - |
         mkdir -p /etc/sddm.conf.d
         cat <<EOF > /etc/sddm.conf.d/autologin.conf
@@ -77,28 +79,36 @@ modules:
         DisplayServer=wayland
         EOF
 
-      # --- 防火墙放行 (VNC + Syncthing) ---
-      - firewall-offline-cmd --add-service=vnc-server
-      - firewall-offline-cmd --add-port=22000/tcp --add-port=21027/udp
+      # --- 注入 Budgie 10.10 的 Wayland 桥接配置 ---
+      - |
+        mkdir -p /usr/share/glib-2.0/schemas/
+        cat <<EOF > /usr/share/glib-2.0/schemas/zz0-budgie-custom.gschema.override
+        [org.buddiesofbudgie.budgie-desktop.services.labwc-bridge]
+        enabled=true
+        [org.gnome.desktop.interface]
+        cursor-theme='Adwaita'
+        EOF
+        glib-compile-schemas /usr/share/glib-2.0/schemas/
 
   # ------------------------------------------------------------
-  # 4. 用户服务: WayVNC 与 Syncthing (针对 UID 1001)
+  # 4. 动态用户服务: 自动适配 UID (解决 WayVNC 与 Syncthing)
   # ------------------------------------------------------------
   - type: script
     snippets:
       - |
         mkdir -p /usr/lib/systemd/user/
-        # --- WayVNC 服务 (集成 D-Bus 唤醒逻辑) ---
+        # --- WayVNC 服务: 使用 %t 动态匹配 /run/user/UID ---
         cat <<EOF > /usr/lib/systemd/user/wayvnc.service
         [Unit]
-        Description=WayVNC Service with D-Bus Sync
+        Description=WayVNC Service (Dynamic UID)
         After=wayland-session.target
 
         [Service]
         Type=simple
         Environment=WAYLAND_DISPLAY=wayland-0
-        Environment=XDG_RUNTIME_DIR=/run/user/1001
-        # 启动前强制同步环境变量，这是修复 Files/gedit 的关键
+        # %t 自动指向当前的 /run/user/UID
+        Environment=XDG_RUNTIME_DIR=%t
+        # 核心修复：启动前强制同步 D-Bus 环境，让 Files 活过来
         ExecStartPre=/usr/bin/dbus-update-activation-environment --all
         ExecStart=/usr/bin/wayvnc --address 0.0.0.0 --port 5900 --render-cursor
         Restart=always
@@ -108,17 +118,18 @@ modules:
         WantedBy=default.target
         EOF
 
-        # --- Syncthing 用户服务 ---
+        # --- Syncthing 服务: 使用 %h 动态匹配家目录 ---
         cat <<EOF > /usr/lib/systemd/user/syncthing.service
         [Unit]
-        Description=Syncthing - Personal Data Service
+        Description=Syncthing - Dynamic User Data Service
         After=network.target
 
         [Service]
+        Environment=HOME=%h
         ExecStart=/usr/bin/syncthing serve --no-browser --no-restart
         Restart=on-failure
         SuccessExitStatus=3 4
-        RestartSec=1
+        RestartSec=5
 
         [Install]
         WantedBy=default.target
