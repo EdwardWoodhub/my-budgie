@@ -1,18 +1,16 @@
 # ==============================================================================
 # 镜像名称: my-custom-budgie-os
-# 适用版本: Fedora 44 (Rawhide/Beta)
-# 核心架构: Budgie 10.10 + Labwc (Wayland)
-# 修复目标: Files/gedit 授权, Syncthing 8384 锁定, 动态 UID 适配
+# 目标: 彻底放弃 Nautilus，改用更稳的 Thunar，修复 Files 打不开的顽疾
 # ==============================================================================
 
 name: my-custom-budgie-os
-description: 修复版 Budgie 10.10 远程科研工作站
+description: Fedora 44 + Budgie 10.10 (Thunar 稳定版)
 base-image: ghcr.io/ublue-os/base-main
 image-version: 44
 
 modules:
   # ------------------------------------------------------------
-  # 1. 软件源补丁: 解决 v2rayA 在 F44 下的路径缺失问题
+  # 1. 软件源: 锁定 F43 仓库
   # ------------------------------------------------------------
   - type: script
     snippets:
@@ -21,34 +19,31 @@ modules:
         sed -i 's/\$releasever/43/g' /etc/yum.repos.d/_copr_zhullyb-v2rayA.repo
 
   # ------------------------------------------------------------
-  # 2. 软件包安装: 补全驱动、Portal、编辑器与同步工具
+  # 2. 软件包: 换装 Thunar 系列
   # ------------------------------------------------------------
   - type: rpm-ostree
     install:
-      # --- 基础显示与驱动 ---
       - xorg-x11-drv-vmware
       - mesa-dri-drivers
       - xorg-x11-server-Xwayland
       - open-vm-tools-desktop
-      # --- 桌面环境 (Budgie 10.10 + Labwc) ---
       - sddm
       - polkit
       - budgie-desktop
       - budgie-control-center
       - labwc
       - adwaita-cursor-theme
-      # --- 关键：修复 Files/gedit 的“桥接”授权包 ---
-      - xdg-desktop-portal-gtk    # 必须有这个，Nautilus 才能在 Wayland 下弹出窗口
-      - xdg-desktop-portal        # 门户总线
-      - dbus-x11
-      # --- 生产力与同步 ---
+      # --- 抛弃 Nautilus，换装 Thunar ---
+      - thunar                    # 核心文件管理器
+      - thunar-archive-plugin     # 右键压缩/解压
+      - thunar-volman             # 自动挂载 U 盘
+      - tumbler                   # 图片缩略图支持
+      - gvfs-archive              # 档案文件预览
+      - gvfs-smb                  # 局域网共享支持
+      # --- 生产力 ---
+      - pluma                     # 文本编辑器 (比 gedit 更稳)
       - gnome-terminal
-      - nautilus                  # Files
-      - gedit                     # GNOME 编辑器
-      - pluma                     # MATE 编辑器 (备用方案，极稳)
-      - syncthing                 # 文件同步
-      - gvfs                      # 文件系统挂载支持
-      # --- 远程与网络 ---
+      - syncthing
       - wayvnc
       - v2raya
       - firewalld
@@ -56,23 +51,19 @@ modules:
       - htop
 
   # ------------------------------------------------------------
-  # 3. 系统逻辑配置: 环境变量注入与多用户适配
+  # 3. 系统配置: 环境变量注入
   # ------------------------------------------------------------
   - type: script
     snippets:
-      # --- 环境变量: 解决鼠标 invisible、浏览器 Wayland 模式、桌面身份识别 ---
       - |
         echo "WLR_NO_HARDWARE_CURSORS=1" >> /etc/environment
         echo "XDG_CURRENT_DESKTOP=Budgie:GNOME" >> /etc/environment
-        echo "MOZ_ENABLE_WAYLAND=1" >> /etc/environment
         echo "XDG_SESSION_TYPE=wayland" >> /etc/environment
       
-      # --- 多用户 Linger (确保 bob 和 edward 即使不登录，服务也在后台) ---
       - mkdir -p /var/lib/systemd/linger
       - touch /var/lib/systemd/linger/edward
       - touch /var/lib/systemd/linger/bob
       
-      # --- SDDM 自动登录配置 ---
       - |
         mkdir -p /etc/sddm.conf.d
         cat <<EOF > /etc/sddm.conf.d/autologin.conf
@@ -83,8 +74,8 @@ modules:
         DisplayServer=wayland
         EOF
 
-      # --- 注入 Budgie 10.10 桥接 GSchema ---
       - |
+        # 注入 10.10 桥接配置
         mkdir -p /usr/share/glib-2.0/schemas/
         cat <<EOF > /usr/share/glib-2.0/schemas/zz0-budgie-custom.gschema.override
         [org.buddiesofbudgie.budgie-desktop.services.labwc-bridge]
@@ -94,53 +85,41 @@ modules:
         EOF
         glib-compile-schemas /usr/share/glib-2.0/schemas/
 
-      # --- 网络与防火墙 ---
-      - echo "net.ipv4.ip_forward = 1" > /etc/sysctl.d/99-ip-forward.conf
-      - firewall-offline-cmd --add-service=vnc-server
-      - firewall-offline-cmd --add-port=8384/tcp --add-port=22000/tcp
-
   # ------------------------------------------------------------
-  # 4. 动态用户服务: 适配 UID (解决 WayVNC 与 Syncthing 端口)
+  # 4. 动态用户服务 (WayVNC 与 Syncthing)
   # ------------------------------------------------------------
   - type: script
     snippets:
       - |
         mkdir -p /usr/lib/systemd/user/
-        # --- WayVNC 服务 (集成 D-Bus 激活，修复应用打不开的问题) ---
+        # WayVNC
         cat <<EOF > /usr/lib/systemd/user/wayvnc.service
         [Unit]
-        Description=WayVNC Service (Dynamic UID Support)
+        Description=WayVNC Service
         After=wayland-session.target
-
         [Service]
         Type=simple
         Environment=WAYLAND_DISPLAY=wayland-0
-        # %t 会根据登录用户自动变成 /run/user/1000 或 1001
         Environment=XDG_RUNTIME_DIR=%t
-        # 核心：启动前把当前的 Wayland 环境同步给 D-Bus，复活 Files
         ExecStartPre=/usr/bin/dbus-update-activation-environment --all
         ExecStart=/usr/bin/wayvnc --address 0.0.0.0 --port 5900 --render-cursor
         Restart=always
         RestartSec=10
-
         [Install]
         WantedBy=default.target
         EOF
 
-        # --- Syncthing 服务 (锁死 8384 端口) ---
+        # Syncthing (锁定 8384)
         cat <<EOF > /usr/lib/systemd/user/syncthing.service
         [Unit]
-        Description=Syncthing Service (Locked to 8384)
+        Description=Syncthing Service
         After=network.target
-
         [Service]
         Environment=HOME=%h
         ExecStartPre=/usr/bin/mkdir -p %h/.config/syncthing
-        # 核心：强行指定 8384，不再随机分配 41875
         ExecStart=/usr/bin/syncthing serve --no-browser --no-restart --gui-address=127.0.0.1:8384
         Restart=on-failure
         RestartSec=5
-
         [Install]
         WantedBy=default.target
         EOF
