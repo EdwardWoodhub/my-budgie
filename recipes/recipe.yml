@@ -57,6 +57,8 @@ modules:
       - mkdir -p /var/lib/systemd/linger
       - touch /var/lib/systemd/linger/edward
       - touch /var/lib/systemd/linger/bob
+      - firewall-offline-cmd --add-port=5900/tcp
+      - firewall-offline-cmd --add-port=8384/tcp
       
       - |
         mkdir -p /etc/sddm.conf.d
@@ -87,7 +89,7 @@ modules:
         Environment=XDG_RUNTIME_DIR=%t
         # 使用 systemctl 原生命令，不再依赖外部二进制
         ExecStartPre=/usr/bin/systemctl --user import-environment WAYLAND_DISPLAY XDG_RUNTIME_DIR
-        ExecStart=/usr/bin/wayvnc --address 0.0.0.0 --port 5900 --render-cursor
+        ExecStart=/usr/bin/wayvnc --render-cursor --disable-auth 0.0.0.0 5900
         Restart=always
         RestartSec=10
 
