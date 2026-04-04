@@ -1,11 +1,16 @@
+# ==============================================================================
+# 镜像名称: my-custom-budgie-os
+# 目标: 修复 Files/gedit，集成 Pluma/Syncthing，完善 D-Bus 握手
+# ==============================================================================
+
 name: my-custom-budgie-os
-description: Fedora 44 + Budgie 10.10 (彻底修复鼠标隐身问题)
+description: Fedora 44 + Budgie 10.10 (全功能科研版)
 base-image: ghcr.io/ublue-os/base-main
 image-version: 44
 
 modules:
   # ------------------------------------------------------------
-  # 1. 软件源: 锁定 F43 仓库
+  # 1. 软件源: 锁定 F43 仓库 (v2rayA 专用)
   # ------------------------------------------------------------
   - type: script
     snippets:
@@ -14,43 +19,55 @@ modules:
         sed -i 's/\$releasever/43/g' /etc/yum.repos.d/_copr_zhullyb-v2rayA.repo
 
   # ------------------------------------------------------------
-  # 2. 软件包: 补全鼠标主题
+  # 2. 软件包: 补全 Portal、Pluma、Syncthing
   # ------------------------------------------------------------
   - type: rpm-ostree
     install:
+      # --- 显示与驱动 ---
       - xorg-x11-drv-vmware
       - mesa-dri-drivers
       - xorg-x11-server-Xwayland
       - open-vm-tools-desktop
+      # --- 桌面核心与桥接 ---
       - sddm
       - polkit
       - budgie-desktop
       - budgie-control-center
       - labwc
-      - adwaita-cursor-theme      # 核心补充：没有这个就没有箭头图片
+      - adwaita-cursor-theme
+      # --- 关键：解决应用打不开的“药引子” ---
+      - xdg-desktop-portal-gtk    # 让 Files/gedit 找到授权
+      - dbus-x11                  # 传统的 D-Bus 工具补全
+      # --- 生产力应用 ---
       - gnome-terminal
-      - nautilus
+      - nautilus                  # Files
+      - gedit                     # GNOME 编辑器
+      - pluma                     # MATE 编辑器 (备用，极稳)
+      - syncthing                 # 文件同步
       - gvfs
-      - wayvnc
       - v2raya
-      - firewalld
+      - wayvnc
       - git
-      - vim
+      - htop
 
   # ------------------------------------------------------------
-  # 3. 系统配置: 全局变量注入 (解决鼠标看不见的关键)
+  # 3. 系统配置: 注入环境变量与 D-Bus 修正
   # ------------------------------------------------------------
   - type: script
     snippets:
-      # --- 关键：将变量写入全局环境，Labwc 启动时必须读取 ---
-      - echo "WLR_NO_HARDWARE_CURSORS=1" >> /etc/environment
-      
-      - echo "net.ipv4.ip_forward = 1" > /etc/sysctl.d/99-ip-forward.conf
+      # --- 全局变量: 解决鼠标隐身与应用启动身份问题 ---
+      - |
+        echo "WLR_NO_HARDWARE_CURSORS=1" >> /etc/environment
+        echo "XDG_CURRENT_DESKTOP=Budgie:GNOME" >> /etc/environment
+        echo "XDG_SESSION_TYPE=wayland" >> /etc/environment
+
+      # --- Linger & 网络 ---
       - mkdir -p /var/lib/systemd/linger
       - touch /var/lib/systemd/linger/edward
+      - echo "net.ipv4.ip_forward = 1" > /etc/sysctl.d/99-ip-forward.conf
       
+      # --- SDDM Autologin ---
       - |
-        # SDDM 强制 Wayland
         mkdir -p /etc/sddm.conf.d
         cat <<EOF > /etc/sddm.conf.d/autologin.conf
         [Autologin]
@@ -60,35 +77,29 @@ modules:
         DisplayServer=wayland
         EOF
 
-      - |
-        # 强制设置光标主题
-        mkdir -p /usr/share/glib-2.0/schemas/
-        cat <<EOF > /usr/share/glib-2.0/schemas/zz0-budgie-custom.gschema.override
-        [org.buddiesofbudgie.budgie-desktop.services.labwc-bridge]
-        enabled=true
-        [org.gnome.desktop.interface]
-        cursor-theme='Adwaita'
-        cursor-size=24
-        EOF
-        glib-compile-schemas /usr/share/glib-2.0/schemas/
+      # --- 防火墙放行 (VNC + Syncthing) ---
+      - firewall-offline-cmd --add-service=vnc-server
+      - firewall-offline-cmd --add-port=22000/tcp --add-port=21027/udp
 
   # ------------------------------------------------------------
-  # 4. WayVNC 用户服务 (1001 用户适配)
+  # 4. 用户服务: WayVNC 与 Syncthing (针对 UID 1001)
   # ------------------------------------------------------------
   - type: script
     snippets:
       - |
         mkdir -p /usr/lib/systemd/user/
+        # --- WayVNC 服务 (集成 D-Bus 唤醒逻辑) ---
         cat <<EOF > /usr/lib/systemd/user/wayvnc.service
         [Unit]
-        Description=WayVNC Service
+        Description=WayVNC Service with D-Bus Sync
         After=wayland-session.target
 
         [Service]
         Type=simple
         Environment=WAYLAND_DISPLAY=wayland-0
         Environment=XDG_RUNTIME_DIR=/run/user/1001
-        # VNC 端也强制渲染一次光标
+        # 启动前强制同步环境变量，这是修复 Files/gedit 的关键
+        ExecStartPre=/usr/bin/dbus-update-activation-environment --all
         ExecStart=/usr/bin/wayvnc --address 0.0.0.0 --port 5900 --render-cursor
         Restart=always
         RestartSec=10
@@ -97,6 +108,25 @@ modules:
         WantedBy=default.target
         EOF
 
+        # --- Syncthing 用户服务 ---
+        cat <<EOF > /usr/lib/systemd/user/syncthing.service
+        [Unit]
+        Description=Syncthing - Personal Data Service
+        After=network.target
+
+        [Service]
+        ExecStart=/usr/bin/syncthing serve --no-browser --no-restart
+        Restart=on-failure
+        SuccessExitStatus=3 4
+        RestartSec=1
+
+        [Install]
+        WantedBy=default.target
+        EOF
+
+  # ------------------------------------------------------------
+  # 5. 激活服务
+  # ------------------------------------------------------------
   - type: systemd
     system:
       enabled:
@@ -107,3 +137,4 @@ modules:
     user:
       enabled:
         - wayvnc.service
+        - syncthing.service
