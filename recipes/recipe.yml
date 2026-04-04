@@ -41,6 +41,7 @@ modules:
       - v2raya
       - firewalld
       - git
+      - gnome-terminal
       - htop
 
   # ------------------------------------------------------------
