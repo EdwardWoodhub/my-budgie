@@ -55,11 +55,14 @@ modules:
         echo "XDG_CURRENT_DESKTOP=Budgie:GNOME" >> /etc/environment
         echo "XDG_SESSION_TYPE=wayland" >> /etc/environment
       
+      # --- 关键修复：手动创建 Linger 文件，代替 loginctl 命令 ---
       - mkdir -p /var/lib/systemd/linger
       - touch /var/lib/systemd/linger/edward
       - touch /var/lib/systemd/linger/bob
-      # 开启 Linger，允许 edward 的后台服务在断开连接后继续运行，方便labwc和wayvnc自动运行（两者不登录图形界面运行不起来）
-      - loginctl enable-linger edward
+      
+      # ！！！注意：下面这一行 loginctl 必须删掉，它是报错的根源 ！！！
+      # - loginctl enable-linger edward  <-- 删掉这一行
+
       - firewall-offline-cmd --add-port=5900/tcp
       - firewall-offline-cmd --add-port=8384/tcp
       
