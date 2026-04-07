@@ -25,6 +25,8 @@ modules:
         - com.github.tchx84.Flatseal
         - com.xnview.XnViewMP
         - com.visualstudio.code
+        - net.nokyan.Resources   # 如果你想要一个漂亮的图形监控界面
+        - io.missioncenter.MissionCenter # 如果你反悔了，想把 Mission Center 加回来
   
 
   - type: rpm-ostree
@@ -58,6 +60,7 @@ modules:
       - fastfetch
       - gnome-terminal
       - htop
+      - btop
 
   # ------------------------------------------------------------
   # 3. 系统逻辑
