@@ -16,13 +16,13 @@ modules:
   # ------------------------------------------------------------
   # 2. 软件包: 加入 dbus-x11 和 Thunar
   # ------------------------------------------------------------
-  - type: default-flatpaks@v1
+  - type: default-flatpaks
     notify: true
     system:
       repo-url: https://dl.flathub.org/repo/flathub.flatpakrepo
       repo-name: flathub
       repo-title: "Flathub (system-wide)"
-    install:
+    flatpaks:
       - com.google.Chrome          # 生产力浏览器
       - com.visualstudio.code      # 核心开发工具
       - com.xnview.XnViewMP        # 极轻量的全能看图/管理
