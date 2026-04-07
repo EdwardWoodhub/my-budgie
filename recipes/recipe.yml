@@ -16,6 +16,17 @@ modules:
   # ------------------------------------------------------------
   # 2. 软件包: 加入 dbus-x11 和 Thunar
   # ------------------------------------------------------------
+  - type: flatpak
+    system:
+      repo-url: https://dl.flathub.org/repo/flathub.flatpakrepo
+      repo-name: flathub
+	    repo-title: "Flathub (system-wide)"
+    install:
+      - com.xnview.XnViewMP
+	    - com.visualstudio.code
+	    - com.github.tchx84.Flatseal
+
+    
   - type: rpm-ostree
     install:
       - xorg-x11-drv-vmware
@@ -35,6 +46,9 @@ modules:
       - thunar
       - thunar-archive-plugin
       - pluma                     # 文本编辑器备胎
+      - atril
+      - engrampa
+      - galculator
       # --- 生产力与同步 ---
       - syncthing
       - wayvnc
