@@ -16,7 +16,8 @@ modules:
   # ------------------------------------------------------------
   # 2. 软件包: 加入 dbus-x11 和 Thunar
   # ------------------------------------------------------------
-  - type: flatpak
+  - type: default-flatpaks@v1
+    notify: true
     system:
       repo-url: https://dl.flathub.org/repo/flathub.flatpakrepo
       repo-name: flathub
