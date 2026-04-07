@@ -20,13 +20,13 @@ modules:
     system:
       repo-url: https://dl.flathub.org/repo/flathub.flatpakrepo
       repo-name: flathub
-	repo-title: "Flathub (system-wide)"
+      repo-title: "Flathub (system-wide)"
     install:
-      - com.xnview.XnViewMP
-	  - com.visualstudio.code
-	  - com.github.tchx84.Flatseal
+      - com.google.Chrome          # 生产力浏览器
+      - com.visualstudio.code      # 核心开发工具
+      - com.xnview.XnViewMP        # 极轻量的全能看图/管理
+      - com.github.tchx84.Flatseal # 必装！用来给上面三个大件调优权限
 
-    
   - type: rpm-ostree
     install:
       - xorg-x11-drv-vmware
