@@ -17,11 +17,15 @@ modules:
   # 2. 软件包: 加入 dbus-x11 和 Thunar
   # ------------------------------------------------------------
   - type: default-flatpaks@v1
-    install:
-      - com.google.Chrome          # 生产力浏览器
-      - com.visualstudio.code      # 核心开发工具
-      - com.xnview.XnViewMP        # 极轻量的全能看图/管理
-      - com.github.tchx84.Flatseal # 必装！用来给上面三个大件调优权限
+    notify: true
+    system:
+      install:
+        - org.mozilla.firefox
+        - com.google.Chrome
+        - com.github.tchx84.Flatseal
+        - com.xnview.XnViewMP
+        - com.visualstudio.code
+  
 
   - type: rpm-ostree
     install:
