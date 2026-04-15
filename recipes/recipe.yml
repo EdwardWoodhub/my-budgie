@@ -10,6 +10,12 @@ modules:
   - type: script
     snippets:
       - |
+        # 直接让整个底座版本与当前仓库对齐
+        rpm-ostree upgrade
+        
+  - type: script
+    snippets:
+      - |
         curl -Lo /etc/yum.repos.d/_copr_zhullyb-v2rayA.repo https://copr.fedorainfracloud.org/coprs/zhullyb/v2rayA/repo/fedora-43/zhullyb-v2rayA-fedora-43.repo
         sed -i 's/\$releasever/43/g' /etc/yum.repos.d/_copr_zhullyb-v2rayA.repo
 
