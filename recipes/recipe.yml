@@ -35,7 +35,8 @@ modules:
       - mesa-dri-drivers
       - xorg-x11-server-Xwayland
       - open-vm-tools-desktop
-      - sddm
+      - lightdm
+      - lightdm-gtk
       - polkit
       - budgie-desktop
       - budgie-control-center
@@ -143,7 +144,7 @@ modules:
   - type: systemd
     system:
       enabled:
-        - sddm.service
+        - lightdm.service
         - v2raya.service
         - vmtoolsd.service
         - firewalld.service
