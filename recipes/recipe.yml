@@ -7,14 +7,14 @@ modules:
   # ------------------------------------------------------------
   # 1. 软件源
   # ------------------------------------------------------------
-  - type: script
-    snippets:
-      - |
-        echo "开始物理级依赖调优..."
+ # - type: script
+  #  snippets:
+   #   - |
+    #    echo "开始物理级依赖调优..."
         # 强制替换底座中过时的 LibRaw 包
-        rpm-ostree override replace \
-          --experimental \
-          LibRaw.x86_64
+     #   rpm-ostree override replace \
+      #    --experimental \
+       #   LibRaw.x86_64
         # 直接让整个底座版本与当前仓库对齐
         # rpm-ostree upgrade
         
