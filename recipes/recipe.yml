@@ -14,7 +14,6 @@ modules:
         # 强制替换底座中过时的 LibRaw 包
         rpm-ostree override replace \
           --experimental \
-          --from repo=fedora \
           LibRaw.x86_64
         # 直接让整个底座版本与当前仓库对齐
         # rpm-ostree upgrade
