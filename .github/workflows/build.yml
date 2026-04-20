@@ -2,7 +2,7 @@ name: bluebuild
 on:
   schedule:
     - cron:
-        "00 06 * * *" # 每天 UTC 06:00 构建
+        "17 21 * * *" # 每天 CST 05:17 构建
   push:
     paths-ignore:
       - "**.md"
