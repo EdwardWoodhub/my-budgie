@@ -2,7 +2,7 @@ name: bluebuild
 on:
   schedule:
     - cron:
-        "17 21 * * *" # 每天 CST 05:17 构建
+        "22 20 * * *" # 每天 CST 04:22 构建
   push:
     paths-ignore:
       - "**.md"
@@ -28,7 +28,7 @@ jobs:
           - recipe.yml
     steps:
       - name: Build Custom Image
-        uses: blue-build/github-action@v1.10
+        uses: blue-build/github-action@v1.12
         with:
           recipe: ${{ matrix.recipe }}
           # 1. 私钥内容
