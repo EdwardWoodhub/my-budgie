@@ -38,6 +38,7 @@ modules:
         - com.visualstudio.code
         - net.nokyan.Resources   # 如果你想要一个漂亮的图形监控界面
         - io.missioncenter.MissionCenter # 如果你反悔了，想把 Mission Center 加回来
+        - io.github.peazip.PeaZip
   
 
   - type: rpm-ostree
