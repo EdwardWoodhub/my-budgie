@@ -40,13 +40,13 @@ git push
 # 使用私钥
 配置 GitHub Secrets (最关键的一步): 现在我们需要把私钥内容交给 GitHub Actions，让它在云端自动签名。
 
-获取私钥内容：
-在终端输入 cat cosign.key，完整复制输出的那段以 -----BEGIN COSINE PRIVATE KEY----- 开头的长字符串。
+获取私钥内容：完整复制输出的那段以 -----BEGIN COSINE PRIVATE KEY----- 开头的长字符串。
+```
+cat cosign.key
+```
 
 打开网页：
-在浏览器进入你的 GitHub 仓库 -> Settings -> Secrets and variables -> Actions。
-
-Repository secrets添加以下1个 Secret：
+在浏览器进入你的 GitHub 仓库 -> Settings -> Secrets and variables -> Actions -> Repository secrets添加以下1个 Secret：
 
 名称：SIGNING_SECRET
 
@@ -66,7 +66,7 @@ rm cosign.key
 # 在虚拟机中执行“重基（Rebase）”
 ```
 # 注意：一定要加上 unsigned 前缀，因为我们使用的是自定义签名
-sudo rpm-ostree rebase ostree-unverified-registry:ghcr.io/edwardwoodhub/my-custom-budgie-os:latest
+sudo rpm-ostree rebase ostree-unverified-registry:ghcr.io/edwardwoodhub/my-budgie-vm:latest
 ```
 
 # 关键的“对暗号”——创建用户
@@ -98,10 +98,13 @@ systemctl reboot
 
 # 进阶：如何验证服务真的在跑？
 如果你连不上，可以在虚拟机终端执行以下命令查岗：
+```
+# 检查 WayVNC（注意要有 --user）：
+systemctl --user status wayvnc
 
-检查 WayVNC：systemctl --user status wayvnc（注意要有 --user）。
+# 检查 v2rayA：
+systemctl status v2raya。
 
-检查 v2rayA：systemctl status v2raya。
-
-检查防火墙：sudo firewall-cmd --list-services（看看有没有 vnc-server）。
-
+# 检查防火墙（看看有没有 vnc-server）：
+sudo firewall-cmd --list-services
+```
