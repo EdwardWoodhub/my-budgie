@@ -78,6 +78,7 @@ modules:
       #- lightdm
       #- lightdm-gtk
       - labwc
+      - meld
       - mesa-dri-drivers
       - open-vm-tools-desktop
       - pluma                     # 文本编辑器
