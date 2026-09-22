@@ -1,4 +1,4 @@
-FROM ghcr.io/ublue-os/base-main:44
+FROM quay.io/fedora/fedora-bootc:44
 
 # 1. 软件源配置：直接下载 COPR 的 repo 文件
 RUN curl -Lo /etc/yum.repos.d/_copr_zhullyb-v2rayA.repo \
