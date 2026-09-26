@@ -20,6 +20,8 @@ build/
 dist/
 tmp/
 *.log
+*.iso
+*.iso-CHECKSUM
 
 # ==============================================================
 # 3. 编辑器临时文件与工作空间 (含 Kate / Vim / VS Code / JetBrains)
