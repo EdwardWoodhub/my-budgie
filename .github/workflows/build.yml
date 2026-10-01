@@ -18,7 +18,7 @@ jobs:
     name: Build and Push Image
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
       id-token: write
 
@@ -55,6 +55,44 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ghcr.io/edwardwoodhub/my-budgie-vm:latest
 
+      # 使用 bootc-image-builder 将 bootc 镜像生成为 ISO
+      - name: Build Live/Install ISO using bootc-image-builder
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+        run: |
+          mkdir -p output
+          sudo podman run \
+            --rm \
+            -it \
+            --privileged \
+            --pull=newer \
+            -v ./output:/output \
+            -v /var/lib/containers/storage:/var/lib/containers/storage \
+            quay.io/centos-bootc/bootc-image-builder:latest \
+            --type iso \
+            --local \
+            ghcr.io/edwardwoodhub/my-budgie-vm:latest
+
+          # 寻找生成的 ISO 并重命名为统一名称
+          sudo mv output/bootiso/*.iso ./my-budgie-live.iso
+          sudo chown -R $USER:$USER ./my-budgie-live.iso
+
+      # 将大于 2GB 的 ISO 切割为分卷文件（每个 1.5GB）
+      - name: Split ISO
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+        run: |
+          split -b 1500M my-budgie-live.iso my-budgie-live.iso.part-
+          ls -lh my-budgie-live.iso.part-*
+
+      # 发布切割后的 ISO 分卷到 GitHub Releases
+      - name: Publish ISO to GitHub Releases
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: live-iso-${{ github.sha }}
+          name: "Budgie OS LiveISO (${{ github.sha }})"
+          files: my-budgie-live.iso.part-*
+          generate_release_notes: true
+      
       # 登录阿里云 ACR
       - name: Log in to Aliyun ACR
         if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
