@@ -53,6 +53,7 @@ jobs:
             -v /var/lib/containers/storage:/var/lib/containers/storage \
             quay.io/centos-bootc/bootc-image-builder:latest \
             --type iso \
+            --rootfs ext4 \
             ghcr.io/edwardwoodhub/my-budgie-vm:latest
 
           # 移动并重命名生成的 ISO
