@@ -19,6 +19,7 @@ RUN rpm-ostree install \
     git \
     gnome-terminal \
     htop \
+    konsole \
     labwc \
     meld \
     mesa-dri-drivers \
