@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref || github.run_id }}
   cancel-in-progress: true
 
 jobs:
@@ -72,8 +72,8 @@ jobs:
         if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: live-iso-${{ github.sha }}
-          name: "Budgie OS LiveISO (${{ github.sha }})"
+          tag_name: live-iso-${{ github.sha }}-${{ github.run_number }}
+          name: "Budgie OS LiveISO (${{ github.sha }}) [run #${{ github.run_number }}]"
           files: my-budgie-live.iso.part-*
           generate_release_notes: true
 
