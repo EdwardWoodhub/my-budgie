@@ -26,10 +26,12 @@ RUN rpm-ostree install \
     open-vm-tools-desktop \
     pluma \
     polkit \
+    python3 \
     sddm \
     syncthing \
     thunar \
     thunar-archive-plugin \
+    uv \
     v2raya \
     wayvnc \
     xdg-desktop-portal-gtk \
